@@ -1,0 +1,8 @@
+__pycache__/
+*.pyc
+.pytest_cache/
+# training checkpoints for --resume (the final model is saved as <model>_seed<seed>.pt)
+results/**/*_ckpt.pt
+results/**/*.tmp
+# optional full score matrices (--save-scores), ~40 MB each
+results/**/*_scores_*.npy

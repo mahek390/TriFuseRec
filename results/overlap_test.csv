@@ -1,0 +1,9 @@
+models that hit (top-10),users
+deepfm,124
+sasrec,1531
+deepfm + sasrec,96
+ngcf,120
+deepfm + ngcf,100
+sasrec + ngcf,140
+deepfm + sasrec + ngcf,104
+none,3825

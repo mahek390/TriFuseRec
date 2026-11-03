@@ -2,10 +2,11 @@
 import argparse
 from pathlib import Path
 import json
+import numpy as np
 import pandas as pd
 
 
-def prepare(raw: Path, out: Path) -> dict:
+def prepare(raw: Path, out: Path, tie_break: str = 'item', seed: int = 0) -> dict:
     out.mkdir(parents=True, exist_ok=True)
     ratings = pd.read_csv(raw / 'ratings.dat', sep='::', engine='python',
                           names=['user_id','item_id','rating','timestamp'], encoding='latin-1')
@@ -29,7 +30,13 @@ def prepare(raw: Path, out: Path) -> dict:
     i_map = {i: n for n,i in enumerate(iid)}
     ratings['user_idx'] = ratings.user_id.map(u_map)
     ratings['item_idx'] = ratings.item_id.map(i_map)
-    ratings = ratings.sort_values(['user_idx','timestamp','item_idx']).reset_index(drop=True)
+    # Many ratings share a timestamp (53% of consecutive pairs). 'item' orders ties by movie ID
+    # (the original behaviour); 'random' shuffles them with a fixed seed.
+    if tie_break == 'random':
+        ratings['tie'] = np.random.default_rng(seed).random(len(ratings))
+    else:
+        ratings['tie'] = ratings['item_idx']
+    ratings = ratings.sort_values(['user_idx','timestamp','tie'],kind='stable').reset_index(drop=True)
     pos = ratings.groupby('user_idx').cumcount(ascending=False)
     for name, mask in [('train',pos>=2),('valid',pos==1),('test',pos==0)]:
         ratings.loc[mask, ['user_idx','item_idx','timestamp']].to_csv(out / f'{name}.csv', index=False)
@@ -50,5 +57,8 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('--raw', type=Path,default=Path('data/raw/ml-1m'))
     parser.add_argument('--out', type=Path,default=Path('data/processed'))
+    parser.add_argument('--tie-break', choices=['item','random'], default='item',
+                        help='order of ratings with identical timestamps')
+    parser.add_argument('--seed', type=int, default=0, help='seed for --tie-break random')
     a=parser.parse_args()
-    prepare(a.raw,a.out)
+    prepare(a.raw,a.out,a.tie_break,a.seed)

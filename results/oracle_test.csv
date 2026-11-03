@@ -1,0 +1,3 @@
+what,Recall@10,NDCG@10
+best single model (sasrec),0.3097682119205298,0.18384365503033748
+oracle: best of deepfm/sasrec/ngcf per user,0.3667218543046358,0.21688643493551185

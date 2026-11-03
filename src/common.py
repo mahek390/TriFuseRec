@@ -19,7 +19,8 @@ def read_data(path):
     n_users=int(pd.read_csv(path/'user_map.csv').shape[0])
     n_items=int(pd.read_csv(path/'item_map.csv').shape[0])
     histories=[[] for _ in range(n_users)]
-    for r in train.sort_values(['user_idx','timestamp','item_idx']).itertuples():
+    # Stable sort keeps the file's order for equal timestamps (set by preprocess --tie-break).
+    for r in train.sort_values(['user_idx','timestamp'],kind='stable').itertuples():
         histories[int(r.user_idx)].append(int(r.item_idx))
     val_items=valid.sort_values('user_idx').item_idx.to_numpy(dtype=np.int64)
     test_items=test.sort_values('user_idx').item_idx.to_numpy(dtype=np.int64)
@@ -27,23 +28,25 @@ def read_data(path):
     return train,histories,val_items,test_items,n_users,n_items
 
 
-def negative_samples(train, n_items, n_neg, seed):
-    """Sample unobserved movies for pairwise-positive pointwise models.
+class NegativeSampler:
+    """Uniformly samples movies a user has not interacted with in training (vectorized)."""
+    def __init__(self, train, n_items):
+        self.n_items=n_items
+        self.keys=np.unique(train.user_idx.to_numpy(np.int64)*n_items+train.item_idx.to_numpy(np.int64))
 
-    Exclude ALL held-out positives by passing a full interaction table if available;
-    for train-only baseline this uses train positives and may sample held-outs at low rate.
-    """
-    rng=np.random.default_rng(seed)
-    seen=train.groupby('user_idx').item_idx.apply(set).to_dict()
-    us=[]; it=[]; labels=[]
-    for u,i in train[['user_idx','item_idx']].itertuples(index=False,name=None):
-        u=int(u); i=int(i)
-        us.append(u); it.append(i); labels.append(1.)
-        for _ in range(n_neg):
-            j=int(rng.integers(n_items))
-            while j in seen[u]: j=int(rng.integers(n_items))
-            us.append(u);it.append(j);labels.append(0.)
-    return np.array(us), np.array(it), np.array(labels,dtype=np.float32)
+    def _seen(self, users, items):
+        k=users*self.n_items+items
+        pos=np.minimum(np.searchsorted(self.keys,k),len(self.keys)-1)
+        return self.keys[pos]==k
+
+    def sample(self, users, rng):
+        users=np.asarray(users,dtype=np.int64)
+        items=rng.integers(self.n_items,size=len(users))
+        bad=self._seen(users,items)
+        while bad.any():
+            items[bad]=rng.integers(self.n_items,size=int(bad.sum()))
+            bad[bad]=self._seen(users[bad],items[bad])
+        return items
 
 
 def rank_metrics(scores, truths, seen, ks=(10,20)):
